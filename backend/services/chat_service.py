@@ -40,10 +40,10 @@ def send_message(chat_id: str, data: MessageCreate) -> SendMessageResponse | Non
         return None
 
     user_msg = Message(role="user", content=data.content)
-    json_store.add_message(chat_id, user_msg)
-
     reply_text = llm_service.generate_reply(chat.messages + [user_msg])
     assistant_msg = Message(role="assistant", content=reply_text)
+
+    json_store.add_message(chat_id, user_msg)
     json_store.add_message(chat_id, assistant_msg)
 
     return SendMessageResponse(
