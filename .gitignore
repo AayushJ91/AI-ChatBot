@@ -29,6 +29,10 @@ htmlcov/
 # Logs
 *.log
 
+# Frontend (Node / Vite)
+node_modules/
+frontend/dist/
+
 # IDE & OS
 .vscode/
 .idea/
