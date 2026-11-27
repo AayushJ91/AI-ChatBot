@@ -66,11 +66,18 @@ async def send_mssg(chat_id: str, body: MessageCreate):
     # logic: call chat_service to verify chat exists (else 404), save user message,
     #        call llm_service for AI reply, and save assistant message
     # return: 201 Created with SendMessageResponse (user_message + assistant_message)
-    response = chat_service.send_message(chat_id, body)
+    try:
+        response = chat_service.send_message(chat_id, body)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
     if response is None:
         raise HTTPException(
-            status_code = status.HTTP_404_NOT_FOUND,
-            detail = "Chat not Found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat not found",
         )
 
     return response
