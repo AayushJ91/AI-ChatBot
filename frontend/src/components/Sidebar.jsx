@@ -16,6 +16,7 @@ function formatShortDate(isoString) {
 }
 
 export default function Sidebar({
+  user,
   chats,
   activeChatId,
   backendOnline,
@@ -26,6 +27,7 @@ export default function Sidebar({
   onSelectChat,
   onCreateChat,
   onDeleteChat,
+  onLogout,
 }) {
   const [newTitle, setNewTitle] = useState("");
   const [search, setSearch] = useState("");
@@ -160,22 +162,36 @@ export default function Sidebar({
       </div>
 
       <div className="sidebar-footer">
-        <span
-          className={`status-dot ${
-            backendOnline === null
-              ? "checking"
-              : backendOnline
-              ? "online"
-              : "offline"
-          }`}
-        />
-        <span className="status-text">
-          {backendOnline === null
-            ? "Checking API..."
-            : backendOnline
-            ? "FastAPI Connected"
-            : "Backend Offline"}
-        </span>
+        <div className="user-badge">
+          <div className="user-avatar" aria-hidden="true">
+            {user?.username?.charAt(0).toUpperCase() || "U"}
+          </div>
+          <div className="user-info">
+            <span className="user-name" title={user?.username}>
+              {user?.username}
+            </span>
+            <span className="user-status">
+              <span
+                className={`status-dot ${
+                  backendOnline === null
+                    ? "checking"
+                    : backendOnline
+                    ? "online"
+                    : "offline"
+                }`}
+              />
+              {backendOnline ? "Connected" : "Offline"}
+            </span>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="logout-btn"
+          title="Log out"
+          onClick={onLogout}
+        >
+          Logout
+        </button>
       </div>
     </aside>
   );

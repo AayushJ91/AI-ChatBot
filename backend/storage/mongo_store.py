@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from pymongo import ASCENDING, DESCENDING, MongoClient
 
 from schemas.chat import Chat, Message
+from schemas.users import UserInDB
 
 # Always load backend/.env regardless of which folder you run uvicorn from
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
@@ -20,21 +21,25 @@ client = MongoClient(MONGODB_URI)
 db = client[MONGODB_DB_NAME]
 chats_col = db["chats"]
 messages_col = db["messages"]
+users_col = db["users"]
 
-# Indexes keep chat lookup and message retrieval fast as data grows
+# Indexes keep lookup fast and enforce unique IDs / emails
 chats_col.create_index("id", unique=True)
+chats_col.create_index("user_id")
 messages_col.create_index("chat_id")
+users_col.create_index("id", unique=True)
+users_col.create_index("email", unique=True)
 
 
-def get_all_chats() -> list[Chat]:
-    """Fetch all chat metadata documents (newest first)."""
-    cursor = chats_col.find({}, {"_id": 0}).sort("created_at", DESCENDING)
+def get_all_chats(user_id: str) -> list[Chat]:
+    """Fetch all chat metadata documents for a user (newest first)."""
+    cursor = chats_col.find({"user_id": user_id}, {"_id": 0}).sort("created_at", DESCENDING)
     return [Chat.model_validate(doc) for doc in cursor]
 
 
-def get_chat(chat_id: str) -> Chat | None:
-    """Fetch one chat plus all of its messages sorted oldest -> newest."""
-    chat_doc = chats_col.find_one({"id": chat_id}, {"_id": 0})
+def get_chat(chat_id: str, user_id: str) -> Chat | None:
+    """Fetch one chat owned by `user_id` plus all its messages sorted oldest -> newest."""
+    chat_doc = chats_col.find_one({"id": chat_id, "user_id": user_id}, {"_id": 0})
     if chat_doc is None:
         return None
 
@@ -54,9 +59,9 @@ def save_chat(chat: Chat) -> Chat:
     return chat
 
 
-def add_message(chat_id: str, message: Message) -> Message | None:
-    """Append a message linked to `chat_id` into the `messages` collection."""
-    if chats_col.find_one({"id": chat_id}, {"_id": 1}) is None:
+def add_message(chat_id: str, message: Message, user_id: str) -> Message | None:
+    """Append a message linked to `chat_id` (if owned by `user_id`) into `messages`."""
+    if chats_col.find_one({"id": chat_id, "user_id": user_id}, {"_id": 1}) is None:
         return None
 
     doc = message.model_dump(mode="json")
@@ -65,11 +70,34 @@ def add_message(chat_id: str, message: Message) -> Message | None:
     return message
 
 
-def delete_chat(chat_id: str) -> bool:
-    """Delete a chat and cascade-delete all of its messages."""
-    result = chats_col.delete_one({"id": chat_id})
+def delete_chat(chat_id: str, user_id: str) -> bool:
+    """Delete a chat owned by `user_id` and cascade-delete all of its messages."""
+    result = chats_col.delete_one({"id": chat_id, "user_id": user_id})
     if result.deleted_count == 0:
         return False
 
     messages_col.delete_many({"chat_id": chat_id})
     return True
+ 
+
+def create_user(user: UserInDB) -> UserInDB:
+    """Insert a new user document into the `users` collection."""
+    doc = user.model_dump(mode="json")
+    users_col.insert_one(doc)
+    return user
+
+
+def get_user_by_email(email: str) -> UserInDB | None:
+    """Fetch a user by email, or None if not found."""
+    doc = users_col.find_one({"email": email}, {"_id": 0})
+    if doc is None:
+        return None
+    return UserInDB.model_validate(doc)
+
+
+def get_user_by_id(user_id: str) -> UserInDB | None:
+    """Fetch a user by id, or None if not found."""
+    doc = users_col.find_one({"id": user_id}, {"_id": 0})
+    if doc is None:
+        return None
+    return UserInDB.model_validate(doc)

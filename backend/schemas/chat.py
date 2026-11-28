@@ -37,6 +37,7 @@ class ChatSummary(BaseModel):
     """Lightweight chat metadata (without messages) for listing all chats."""
 
     id: str = Field(default_factory=lambda: str(uuid4()))
+    user_id: str | None = None
     title: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

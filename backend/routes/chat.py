@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Body, HTTPException, status
-from services import chat_service
+from fastapi import APIRouter, Body, Depends, HTTPException, status
+
+from routes.auth import get_current_user
 from schemas.chat import (
     Chat,
     ChatCreate,
@@ -8,50 +9,53 @@ from schemas.chat import (
     MessageCreate,
     SendMessageResponse,
 )
+from schemas.users import UserOut
+from services import chat_service
 
 router = APIRouter(prefix="/chats", tags=["Chats"])
 
 
-# 1. Get all chats (metadata only: id, title, created_at)
+# 1. Get all chats for the logged-in user (metadata only)
 @router.get("/", response_model=list[ChatSummary], status_code=status.HTTP_200_OK)
-async def list_convos():
-    # logic: call chat_service to fetch all conversations from storage
-    # return: list[ChatSummary] (id, title, created_at — no messages)
-    return chat_service.list_chats()
+async def list_convos(current_user: UserOut = Depends(get_current_user)):
+    return chat_service.list_chats(current_user.id)
 
 
-# 2. Create a new chat
+# 2. Create a new chat owned by the logged-in user
 @router.post("/", response_model=Chat, status_code=status.HTTP_201_CREATED)
-async def create_chat(body: ChatCreate = Body(default_factory=ChatCreate)):
-    # logic: call chat_service to create a new Chat (auto-generates id & created_at) and save to storage
-    # return: 201 Created with the newly created Chat object
-    return chat_service.create_chat(body)
+async def create_chat(
+    body: ChatCreate = Body(default_factory=ChatCreate),
+    current_user: UserOut = Depends(get_current_user),
+):
+    return chat_service.create_chat(body, current_user.id)
 
 
-# 3. Get all messages of a specific chat
+# 3. Get all messages of a specific chat (must belong to current_user)
 @router.get("/{chat_id}/messages", response_model=list[Message])
-async def get_mssg(chat_id: str):
-    # logic: call chat_service to fetch messages for chat_id (raise 404 if chat not found)
-    # return: list[Message] belonging to this chat
-    mssgs = chat_service.get_messages(chat_id)
+async def get_mssg(
+    chat_id: str,
+    current_user: UserOut = Depends(get_current_user),
+):
+    mssgs = chat_service.get_messages(chat_id, current_user.id)
     if mssgs is None:
         raise HTTPException(
-            status_code = status.HTTP_404_NOT_FOUND,
-            detail = "Chat not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat not found",
         )
     return mssgs
 
 
-# 4. Get a specific chat (metadata + messages)
+# 4. Get a specific chat (metadata + messages, must belong to current_user)
 @router.get("/{chat_id}", response_model=Chat)
-async def specific_chat(chat_id: str):
-    # logic: call chat_service to fetch the full Chat by chat_id (raise 404 if chat not found)
-    # return: full Chat object (id, title, created_at, messages)
-    chat = chat_service.get_chat(chat_id)
+async def specific_chat(
+    chat_id: str,
+    current_user: UserOut = Depends(get_current_user),
+):
+    chat = chat_service.get_chat(chat_id, current_user.id)
     if chat is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chat not found"
+            detail="Chat not found",
         )
     return chat
 
@@ -62,12 +66,13 @@ async def specific_chat(chat_id: str):
     response_model=SendMessageResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def send_mssg(chat_id: str, body: MessageCreate):
-    # logic: call chat_service to verify chat exists (else 404), save user message,
-    #        call llm_service for AI reply, and save assistant message
-    # return: 201 Created with SendMessageResponse (user_message + assistant_message)
+async def send_mssg(
+    chat_id: str,
+    body: MessageCreate,
+    current_user: UserOut = Depends(get_current_user),
+):
     try:
-        response = chat_service.send_message(chat_id, body)
+        response = chat_service.send_message(chat_id, body, current_user.id)
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -83,12 +88,13 @@ async def send_mssg(chat_id: str, body: MessageCreate):
     return response
 
 
-# 6. Delete a specific conversation
+# 6. Delete a specific conversation (must belong to current_user)
 @router.delete("/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_convo(chat_id: str):
-    # logic: call chat_service to delete chat_id from storage (raise 404 if chat not found)
-    # return: 204 No Content
-    deleted = chat_service.delete_chat(chat_id)
+async def delete_convo(
+    chat_id: str,
+    current_user: UserOut = Depends(get_current_user),
+):
+    deleted = chat_service.delete_chat(chat_id, current_user.id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
